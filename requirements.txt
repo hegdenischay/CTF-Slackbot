@@ -1,0 +1,7 @@
+gunicorn==19.6.0
+flask>=0.12.3
+requests==2.21.0
+slack_bolt
+praw
+s3fs
+pytz
