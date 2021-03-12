@@ -21,7 +21,7 @@ def logger(ack, say, command):
 def ctf_func(client, ack, say, command):
     # call different functions based on the slash command used
     if command['text'] == "help":
-        ctf_help(ack, say, command)
+        ctf_help(client, ack, say, command)
     elif command['text'][:4] == "add ":
         ctf_add(client, ack, say, command)
     elif command['text'][:9] == "upcoming ":
@@ -40,7 +40,7 @@ def ctf_func(client, ack, say, command):
         say("Invalid command")
 
 
-def ctf_help(ack, say, command):
+def ctf_help(client, ack, say, command):
     ack()
     help_text = """
 This is the help text for the /ctf slash command. Available functions are:
@@ -52,8 +52,8 @@ This is the help text for the /ctf slash command. Available functions are:
 /ctf archive := Logs in with creds given from addcreds, gets challs and description, and stores them off on S3
 /ctf check := check for new CTFs within a week and add them.
     """
-    logger(ack, say, command)
-    say(text=help_text)
+    #logger(ack, say, command)
+    client.chat_postEphemeral(text=help_text)
 
 
 def ctf_add(client, ack, say, command):
