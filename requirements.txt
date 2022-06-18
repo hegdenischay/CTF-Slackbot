@@ -1,7 +1,17 @@
-gunicorn==19.6.0
+# gunicorn==19.6.0
+gunicorn
 flask>=0.12.3
-requests==2.21.0
+requests
+# requests==2.21.0
 slack_bolt
 praw
 s3fs
 pytz
+feedparser
+bs4
+halo
+cloudscraper
+lxml
+google-api-python-client 
+google-auth-httplib2 
+google-auth-oauthlib

@@ -5,42 +5,83 @@ import requests
 from datetime import timezone, datetime, timedelta
 import pytz
 import s3fs
+import feedparser
+import ctfd
+import shutil
+import google.auth
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 
+SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/drive.file']
 
-headers = {"accept-encoding": "gzip, deflate, br", "accept-language": "en-US,en;q=0.9", "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36"}
+# headers = {"accept-encoding": "gzip, deflate, br", "accept-language": "en-US,en;q=0.9", "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.74 Safari/537.36"}
+# moooom, ctftime has blocked me yet again for using a cli
+headers = { "authority": "ctftime.org",
+           "pragma": "no-cache",
+           "cache-control": "no-cache",
+           "sec-ch-ua-mobile": "?0",
+           "upgrade-insecure-requests": "1",
+           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.74 Safari/537.36",
+           "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+           "sec-fetch-site": "none",
+           "sec-fetch-mode": "navigate",
+           "sec-fetch-user": "?1",
+           "sec-fetch-dest": "document",
+           "accept-language": "en-US,en;q=0.9"
+           }
 
 
 bucket = os.environ.get("S3_LOCATION")
 fs = s3fs.S3FileSystem(anon=False)
 
-
-def logger(ack, say, command):
-    say(f"{command['text']} was called by <@{command['user_id']}>")
+def logger(client, ack, say, command, users):
+    print(users)
+    client.chat_postMessage(
+        channel = command['channel_id'],
+        icon_url=users[command['user_id']],
+        username=command['user_name'],
+        text=f"/ctf {command['text']}"
+    )
 
 
 def ctf_func(client, ack, say, command):
+    try:
+        with open('slack_users.json', 'r') as f:
+            users = json.load(f)
+    except FileNotFoundError:
+        users = client.users_list()
+        usersbutBetter = {users['members'][i]['id']:users['members'][i]['profile']['image_72'] for i in range(len(users['members']))}
+        with open('slack_users.json', 'w') as f:
+            json.dump(usersbutBetter, f)
     # call different functions based on the slash command used
     if command['text'] == "help":
-        ctf_help(client, ack, say, command)
+        ctf_help(client, ack, say, command, users)
     elif command['text'][:4] == "add ":
-        ctf_add(client, ack, say, command)
+        ctf_add(client, ack, say, command, users)
     elif command['text'][:9] == "upcoming ":
-        ctf_upcoming(ack, say, command)
+        ctf_upcoming(client, ack, say, command, users)
     elif command['text'][:9] == "addcreds ":
-        ctf_addcreds(ack, say, command)
+        ctf_addcreds(client, ack, say, command, users)
     elif command['text'][:10] == "showcreds ":
-        ctf_showcreds(ack, say, command)
+        ctf_showcreds(client, ack, say, command, users)
     elif command['text'][:7] == "archive":
-        ctf_archive(ack, say, command)
+        ctf_archive(client, ack, say, command, users)
     elif command['text'][:5] == "check":
-        ctf_check(client, ack, say, command)
+        ctf_check(client, ack, say, command, users)
+    elif command['text'][:3] == "sub":
+        ctf_subscribe(client, ack, say, command, users)
     else:
         ack()
         print(command['text'])
         say("Invalid command")
 
 
-def ctf_help(client, ack, say, command):
+def ctf_help(client, ack, say, command, users):
     ack()
     help_text = """
 This is the help text for the /ctf slash command. Available functions are:
@@ -53,10 +94,10 @@ This is the help text for the /ctf slash command. Available functions are:
 /ctf check := check for new CTFs within a week and add them.
     """
     #logger(ack, say, command)
-    client.chat_postEphemeral(text=help_text)
+    client.chat_postEphemeral(text=help_text, channel=command['channel_id'], user=command['user_id'])
 
 
-def ctf_add(client, ack, say, command):
+def ctf_add(client, ack, say, command, users):
     ack()
     # get url
     url = command['text'][4:].strip()
@@ -64,7 +105,7 @@ def ctf_add(client, ack, say, command):
     # confirm that previous "url" was in fact a url
     url = re.findall(regex_text, url)[0]
     # get event ID
-    event_id = url.split('/')[-1]
+    event_id = url.split('/')[4]
     request_url = "https://ctftime.org/api/v1/events/"+event_id+"/"
     # why are headers even required? hell
     global headers
@@ -100,7 +141,7 @@ def ctf_add(client, ack, say, command):
     say(text)
 
 
-def ctf_upcoming(ack, say, command):
+def ctf_upcoming(client, ack, say, command, users):
     global headers
     # get end dates
     args = re.split('[-/]', command['text'][8:].strip())
@@ -114,18 +155,18 @@ def ctf_upcoming(ack, say, command):
         text = ""
         for i in range(len(r)):
             text += f"CTF Name : {r[i]['title']}\n"
-            text += f"CTF URL : {r[i]['url']}\n"
+            text += f"CTF URL : {r[i]['ctftime_url']}\n"
             text += f"CTF Points: {r[i]['weight']}\n"
         if text == "":
             text = "No CTFs in this timeframe"
     else:
         text = ' '.join(args)
     ack()
-    logger(ack, say, command)
+    logger(client, ack, say, command, users)
     say(text)
 
 
-def ctf_addcreds(ack, say, command):
+def ctf_addcreds(client, ack, say, command, users):
     ack()
     try:
         with fs.open(bucket+"/credentials.json", 'r') as f:
@@ -149,34 +190,70 @@ def ctf_addcreds(ack, say, command):
     global headers
 
     # fetch details from CTFTime API
-    r = requests.get(request_url, headers=headers).json()
+    r = requests.get(request_url, headers=headers)
+    print(r)
+    r = r.json()
     creds.update({str(len(creds)): {"CTF": r['title'], "Username": username, "Password": password, "URL": r['url']}})
     with fs.open(bucket+"/credentials.json", "w") as f:
         json.dump(creds, f)
-    logger(ack, say, command)
-    say(f'Added {username}, {password}, under {r["title"]}')
+    logger(client, ack, say, command, users)
+    try: 
+        ctfd.main(username, password, url)
+    except Exception as e:
+        say(f"Exception raised: {e}")
+    #say(f'Added {username}, {password}, under {r["title"]}')
+    os.chdir('../../')
+    print(os.listdir('.'))
+    shutil.make_archive(r["title"],'zip',"CTF/")
+    #flow = InstalledAppFlow.from_client_secrets_file('credentials_from_google_app.json', ['https://www.googleapis.com/auth/drive.metadata.readonly','https://www.googleapis.com/auth/drive.file'])
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    service = build('drive', 'v3', credentials=creds)
+    file_metadata = {'name': 'CTFd.zip', 'parents': [os.environ.get("DRIVE_ID")]}
+    media = MediaFileUpload('CTFd.zip', mimetype='application/zip')
+    file = service.files().create(body=file_metadata,
+                                        media_body=media,
+                                        fields='id').execute()
+
+    say(f'Added {username}, {password}', under {r["title"]}')
 
 
-def ctf_showcreds(ack, say, command):
+def ctf_showcreds(client, ack, say, command, users):
     ack()
     with fs.open(bucket+"/credentials.json", "r") as f:
         creds = json.load(f)
-    check = command['text'][9:].strip()
+    check = command['text'][9:].strip().lower()
     text = f"These are the matches for {check}:\n"
     for i in range(len(creds)):
-        if check in creds[str(i)]["CTF"]:
+        if check in creds[str(i)]["CTF"].lower():
             text += f'CTF Name: {creds[str(i)]["CTF"]}\n'
             text += f'CTF URL: {creds[str(i)]["URL"]}\n'
             text += f'Username: {creds[str(i)]["Username"]}\n'
             text += f'Password: {creds[str(i)]["Password"]}\n'
-    logger(ack, say, command)
+    logger(client, ack, say, command, users)
     say(text)
 
 
-def ctf_archive(ack, say, command):
+def ctf_archive(client, ack, say, command, users):
     ack()
-    logger(ack, say, command)
-    say("WIP")
+    logger(client, ack, say, command, users)
+    say("Deprecated! Use addcreds")
     # with fs.open(bucket+"/credentials.json", "r") as f:
     #     creds = json.load(f)
     # check = command['text'][8:].strip()
@@ -190,9 +267,9 @@ def ctf_archive(ack, say, command):
     #         grabctfd.main(username, password, url, loginpath, apipath)
 
 
-def ctf_check(client, ack, say, command):
+def ctf_check(client, ack, say, command, users):
     ack()
-    logger(ack, say, command)
+    logger(client, ack, say, command, users)
     request_date = int((datetime.now() + timedelta(days=7)).timestamp())
     timestamp_now = int(datetime.now().timestamp())
     request_url = "https://ctftime.org/api/v1/events/?limit=1000&"+"start="+str(timestamp_now)+"&finish="+str(request_date)
@@ -201,4 +278,20 @@ def ctf_check(client, ack, say, command):
     for i in range(len(r)):
         if r[i]['weight'] > 0:
             command['text'] = f"add {r[i]['ctftime_url'][:-1]}"
-            ctf_add(client, ack, say, command)
+            ctf_add(client, ack, say, command, users)
+
+def ctf_subscribe(client, ack, say, command, users):
+    ack()
+    logger(client, ack, say, command, users)
+    try:
+        with open("subscriptions.json",'r') as f:
+            subs = json.load(f)
+    except FileNotFoundError:
+        subs = {i: [] for i in users.keys()}
+        with open("subscriptions.json", 'w') as f:
+            json.dump(subs, f)
+    print(command)
+    subs[command['user_id']].append(command['text'][4:])
+    with open("subscriptions.json", 'w') as f:
+        json.dump(subs,f)
+

@@ -27,34 +27,50 @@ app = App(
 logging.basicConfig(level=logging.INFO)
 
 
+def is_retry_request(request):
+    h = request.headers
+    return h.get('x-slack-retry-num') and h.get('x-slack-retry-reason') and h.get('x-slack-retry-reason')[0] == 'http_timeout'
+
+
 # function that asks for intros
 @app.event("team_join")
-def handler(event, say):
-    slackbot_welcoming.ask_for_introduction(event, say)
+def handler(event, say, request):
+    if not is_retry_request(request):
+        slackbot_welcoming.ask_for_introduction(event, say)
 
 
 # triggered when messages are sent to Slackbot
 @app.event("message")
-def handler(event, say):
-    slackbot_emails.send_message(event, say)
+def handler(event, say, request):
+    if not is_retry_request(request):
+        slackbot_emails.send_message(event, say)
 
 
 @app.command("/track")
-def handler(ack, say, command):
-    slackbot_emails.track_users(ack, say, command)
+def handler(ack, say, command, request):
+    if not is_retry_request(request):
+        slackbot_emails.track_users(ack, say, command)
 
 @app.command("/report")
-def handler(ack, say, command):
-    slackbot_emails.print_report(ack, say, command)
+def handler(ack, say, command, request):
+    if not is_retry_request(request):
+        slackbot_emails.print_report(ack, say, command)
 
 
 @app.command("/memes")
-def handler(ack, say, command):
-    slackbot_memes.post_memes(ack, say, command)
+def handler(client, ack, say, command, request):
+    if not is_retry_request(request):
+        slackbot_memes.post_memes(client, ack, say, command)
 
 @app.command("/ctf")
-def handler(client, ack, say, command):
-    slackbot_ctf.ctf_func(client, ack, say, command)
+def handler(client, ack, say, command, request):
+    if not is_retry_request(request):
+        slackbot_ctf.ctf_func(client, ack, say, command)
+
+@app.command("/docs")
+def handler(client, ack, say, command, request):
+    if not is_retry_request(request):
+        slackbot_docs.doc_func(client, ack, say, command)
 
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(app)

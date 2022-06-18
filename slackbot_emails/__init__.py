@@ -55,13 +55,13 @@ def send_message(event, say):
                 print(sender_email[sender_email.index("<")+1:-1])
 
         if all_cc:
-            data[0]["attachments"][0]["fields"].append({
+            data[0]["fields"].append({
                 "title": "cc",
                 "value": all_cc
             })
 
         if email["attachments"]:
-            data[0]["attachments"][0]["fields"].append({
+            data[0]["fields"].append({
                 "title": "",
                 "value": "This email also has attachments",
                 "short": False
@@ -78,6 +78,7 @@ def send_message(event, say):
             )
     else:
     # was not an email
+        print(event)
         print("Successfully did not do anything")
         
 
@@ -97,13 +98,16 @@ def track_users(ack, say, command):
 def print_report(ack, say, command):
     with fs.open(bucket+'/users.json', 'r') as f:
         users = json.load(f)
-    print(users)
     users['0']['last_updated'] = str(date.today())
     users['0']['Name'] = "Dummy user"
     users['0']['email'] = "email@example.com"
     users['0']['has_posted'] = 1
     ack()
-    print(users)
+    for i in users:
+        if users[i]['last_updated'] != str(date.today()):
+            users[i]['has_posted'] = 0
+    with fs.open(bucket+'/users.json', 'w') as f:
+        json.dump(users,f)
     has_posted = [users[str(iterator)]["Name"] for iterator in users if (users[str(iterator)]["has_posted"] == 0)]
     if len(has_posted) == 0:
         text = "Everyone has posted their status updates!"
