@@ -254,17 +254,6 @@ def ctf_archive(client, ack, say, command, users):
     ack()
     logger(client, ack, say, command, users)
     say("Deprecated! Use addcreds")
-    # with fs.open(bucket+"/credentials.json", "r") as f:
-    #     creds = json.load(f)
-    # check = command['text'][8:].strip()
-    # for i in range(len(creds)):
-    #    if check in creds[str(i)]["CTF"]:
-    #         username = creds[str(i)]["Username"]
-    #         password = creds[str(i)]["Password"]
-    #         url = creds[str(i)]["URL"]
-    #         loginpath = url+"/login"
-    #         apipath = url + "/api/v1/challenges"
-    #         grabctfd.main(username, password, url, loginpath, apipath)
 
 
 def ctf_check(client, ack, say, command, users):
