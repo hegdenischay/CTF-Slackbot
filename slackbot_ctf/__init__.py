@@ -231,7 +231,7 @@ def ctf_addcreds(client, ack, say, command, users):
                                         media_body=media,
                                         fields='id').execute()
 
-    say(f'Added {username}, {password}', under {r["title"]}')
+    say(f'Added {username}, {password}, under {r["title"]}')
 
 
 def ctf_showcreds(client, ack, say, command, users):
